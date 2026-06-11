@@ -49,6 +49,32 @@ st.set_page_config(
 # NumPy 2.0+ moved trapz → trapezoid; tolerate either
 _trapz = getattr(np, 'trapezoid', None) or getattr(np, 'trapz')
 
+# ---- Design tokens (terminal palette — keep in sync with .streamlit/config.toml) ----
+C_BG      = "#0f1419"   # page background
+C_PANEL   = "#171c26"   # card / panel surface
+C_BORDER  = "#262d3d"   # hairline borders
+C_TEXT    = "#e6e9ef"   # primary text
+C_MUTED   = "#8b93a7"   # secondary text
+C_GREEN   = "#00c290"   # profit
+C_RED     = "#f6465d"   # loss
+C_BLUE    = "#4f8cff"   # data / underlying
+C_AMBER   = "#f0b90b"   # warnings / strike markers
+C_TEAL    = "#2dd4bf"   # expiration curve
+
+# ---- Shared Plotly layout (terminal chart chrome) ----
+PLOTLY_BASE = dict(
+    template="plotly_dark",
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="IBM Plex Sans, sans-serif", size=12, color=C_TEXT),
+    hoverlabel=dict(
+        bgcolor=C_PANEL, bordercolor=C_BORDER,
+        font=dict(family="IBM Plex Mono, monospace", size=12, color=C_TEXT),
+    ),
+)
+GRID_STYLE = dict(gridcolor="rgba(38,45,61,0.55)", zerolinecolor=C_BORDER,
+                  linecolor=C_BORDER)
+
 # ====================================================================
 # BLACK-SCHOLES PRICING & GREEKS  (vectorized over S)
 # ====================================================================
@@ -526,9 +552,9 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
         fig.add_trace(go.Scatter(
             x=S_v, y=pdf_v,
             mode='lines',
-            line=dict(color='rgba(59,130,246,0.35)', width=1),
+            line=dict(color='rgba(79,140,255,0.45)', width=1),
             fill='tozeroy',
-            fillcolor='rgba(59,130,246,0.10)',
+            fillcolor='rgba(79,140,255,0.10)',
             name=f'Probability density ({int(analyze_days_elapsed)}d)',
             yaxis='y2',
             hoverinfo='skip',
@@ -536,19 +562,19 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
         ))
         # Implied move markers (±1σ, ±2σ)
         im1 = implied_move(spot, sigma, T_for_prob)
-        for k, dash, op in [(1, 'dot', 0.4), (2, 'dot', 0.25)]:
+        for k, dash, op in [(1, 'dot', 0.40), (2, 'dot', 0.22)]:
             for sign in (-1, 1):
                 x = spot + sign * k * im1
                 if view_low <= x <= view_high:
                     fig.add_vline(
-                        x=x, line=dict(color=f'rgba(59,130,246,{op})', width=1, dash=dash),
+                        x=x, line=dict(color=f'rgba(79,140,255,{op})', width=1, dash=dash),
                     )
 
     # --- P&L @ expiration: dashed thin line, no fill (matches screenshot) ---
     fig.add_trace(go.Scatter(
         x=S_v, y=pnl_exp_v,
         mode='lines',
-        line=dict(color='rgba(20,184,166,0.75)', width=1.5, dash='dash'),
+        line=dict(color='rgba(45,212,191,0.75)', width=1.5, dash='dash'),
         name='P&L @ Expiration',
         hoverinfo='skip',
     ))
@@ -558,9 +584,9 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
     fig.add_trace(go.Scatter(
         x=S_v, y=pnl_an_pos,
         mode='lines',
-        line=dict(color='rgba(16,185,129,1)', width=2),
+        line=dict(color='#00c290', width=2),
         fill='tozeroy',
-        fillcolor='rgba(16,185,129,0.35)',
+        fillcolor='rgba(0,194,144,0.22)',
         name=analyze_label,
         text=hover,
         hovertemplate='%{text}<extra></extra>',
@@ -569,9 +595,9 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
     fig.add_trace(go.Scatter(
         x=S_v, y=pnl_an_neg,
         mode='lines',
-        line=dict(color='rgba(239,68,68,1)', width=2),
+        line=dict(color='#f6465d', width=2),
         fill='tozeroy',
-        fillcolor='rgba(239,68,68,0.30)',
+        fillcolor='rgba(246,70,93,0.18)',
         name='P&L @ analyze (loss)',
         showlegend=False,
         hoverinfo='skip',
@@ -579,9 +605,10 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
 
     # Current price line
     fig.add_vline(
-        x=spot, line=dict(color='#3b82f6', width=1.2, dash='dash'),
+        x=spot, line=dict(color=C_BLUE, width=1.2, dash='dash'),
         annotation_text=f"Current: ${spot:.2f}", annotation_position="top",
-        annotation_font=dict(color='#3b82f6', size=10),
+        annotation_font=dict(color=C_BLUE, size=10,
+                             family="IBM Plex Mono, monospace"),
     )
     # Breakeven lines — use analyze-date curve (the SOLID curve the user sees),
     # since that's where the on-chart "Breakeven: $X" label crosses zero.
@@ -589,47 +616,47 @@ def build_pnl_chart(metrics, spot, sigma, analyze_days_elapsed, ticker,
     for i, be in enumerate(chart_bes):
         if view_low <= be <= view_high:
             fig.add_vline(
-                x=be, line=dict(color='#ef4444', width=1, dash='dot'),
+                x=be, line=dict(color=C_AMBER, width=1, dash='dot'),
                 annotation_text=f"BE: ${be:.2f}",
                 annotation_position="top" if i % 2 == 0 else "bottom",
-                annotation_font=dict(color='#ef4444', size=10),
+                annotation_font=dict(color=C_AMBER, size=10,
+                                     family="IBM Plex Mono, monospace"),
             )
     # Zero line
-    fig.add_hline(y=0, line=dict(color='rgba(128,128,128,0.4)', width=1))
+    fig.add_hline(y=0, line=dict(color='rgba(139,147,167,0.45)', width=1))
 
     fig.update_layout(
+        **PLOTLY_BASE,
         xaxis=dict(
             title=f"{ticker} Price ($)",
-            showgrid=True, gridcolor='rgba(128,128,128,0.10)',
-            zeroline=False, range=[view_low, view_high],
+            showgrid=True, zeroline=False, range=[view_low, view_high],
+            tickprefix="$", **GRID_STYLE,
         ),
         yaxis=dict(
             title="Expected Profit & Loss ($)",
-            showgrid=True, gridcolor='rgba(128,128,128,0.10)',
-            zeroline=False, tickformat='+$,.0f',
+            showgrid=True, zeroline=False, tickformat='+$,.0f',
+            **GRID_STYLE,
         ),
         yaxis2=dict(
             title=dict(
                 text="Probability density",
-                font=dict(color='#3b82f6', size=11),
+                font=dict(color=C_BLUE, size=11),
             ),
             overlaying='y', side='right',
             showgrid=False,
             showticklabels=True,
-            tickfont=dict(color='#3b82f6', size=10),
+            tickfont=dict(color=C_BLUE, size=10,
+                          family="IBM Plex Mono, monospace"),
             tickformat='.3f',
             range=[0, pdf_max * 4.5],  # squash so PDF occupies bottom ~22%
             fixedrange=True,
             zeroline=False,
         ),
-        template="plotly_white",
         height=480,
         hovermode='x unified',
-        hoverlabel=dict(bgcolor='rgba(15,23,42,0.95)', font=dict(size=12, color='white')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="center", x=0.5, font=dict(size=11)),
         margin=dict(l=60, r=70, t=50, b=60),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
     )
     return fig
 
@@ -677,7 +704,7 @@ def build_option_history_chart(underlying_hist, option_hist, leg, ticker,
     fig.add_trace(go.Scatter(
         x=uh.index, y=theo,
         name=f"Theoretical (BS @ {iv*100:.0f}% IV)",
-        line=dict(color='#94a3b8', width=1.5, dash='dot'),
+        line=dict(color=C_MUTED, width=1.5, dash='dot'),
         hovertemplate="%{x|%b %d}: $%{y:.2f}<extra>Theoretical</extra>",
     ))
 
@@ -697,19 +724,19 @@ def build_option_history_chart(underlying_hist, option_hist, leg, ticker,
                 open=oh['Open'], high=oh['High'],
                 low=oh['Low'], close=oh['Close'],
                 name="Option price (real trades)",
-                increasing=dict(line=dict(color='#10b981'),
-                                fillcolor='#10b981'),
-                decreasing=dict(line=dict(color='#ef4444'),
-                                fillcolor='#ef4444'),
+                increasing=dict(line=dict(color=C_GREEN, width=1),
+                                fillcolor=C_GREEN),
+                decreasing=dict(line=dict(color=C_RED, width=1),
+                                fillcolor=C_RED),
             ))
             # Volume bars on a third (hidden) axis at the bottom
             if 'Volume' in oh.columns and oh['Volume'].sum() > 0:
-                vol_colors = ['#10b981' if c >= o else '#ef4444'
+                vol_colors = [C_GREEN if c >= o else C_RED
                               for c, o in zip(oh['Close'], oh['Open'])]
                 fig.add_trace(go.Bar(
                     x=oh.index, y=oh['Volume'],
                     name="Volume", yaxis='y3',
-                    marker_color=vol_colors, opacity=0.5,
+                    marker_color=vol_colors, opacity=0.45,
                     hovertemplate="%{x|%b %d}: %{y:,.0f}<extra>Volume</extra>",
                 ))
 
@@ -718,32 +745,37 @@ def build_option_history_chart(underlying_hist, option_hist, leg, ticker,
         x=uh.index, y=uh['Close'],
         name=f"{ticker} price",
         yaxis='y2',
-        line=dict(color='#3b82f6', width=1.2),
+        line=dict(color=C_BLUE, width=1.2),
         hovertemplate="%{x|%b %d}: $%{y:.2f}<extra>" + ticker + "</extra>",
     ))
 
     # Strike reference line on the underlying axis
-    fig.add_hline(y=K, line=dict(color='#f59e0b', width=1, dash='dash'),
+    fig.add_hline(y=K, line=dict(color=C_AMBER, width=1, dash='dash'),
                   yref='y2',
                   annotation_text=f"Strike ${K:.2f}",
-                  annotation_font_color='#f59e0b',
+                  annotation_font=dict(color=C_AMBER, size=10,
+                                       family="IBM Plex Mono, monospace"),
                   annotation_position="top right")
 
     opt_label = (f"{ticker} {datetime.strptime(leg['expiration'], '%Y-%m-%d').strftime('%b %d, %Y')} "
                  f"${K:.2f} {opt_type.upper()}")
     fig.update_layout(
-        title=dict(text=f"Option price history — {opt_label}", font=dict(size=14)),
-        xaxis=dict(title="", rangeslider=dict(visible=False)),
+        **PLOTLY_BASE,
+        title=dict(text=f"{opt_label}", font=dict(
+            size=13, family="IBM Plex Mono, monospace", color=C_MUTED)),
+        xaxis=dict(title="", rangeslider=dict(visible=False), **GRID_STYLE),
         yaxis=dict(
             title=dict(text="Option price ($)", font=dict(size=11)),
-            side='left',
+            side='left', tickprefix="$",
             domain=[0.22, 1.0],   # reserve bottom for volume bars
+            **GRID_STYLE,
         ),
         yaxis2=dict(
-            title=dict(text=f"{ticker} price ($)", font=dict(color='#3b82f6', size=11)),
+            title=dict(text=f"{ticker} price ($)", font=dict(color=C_BLUE, size=11)),
             overlaying='y', side='right',
-            showgrid=False,
-            tickfont=dict(color='#3b82f6', size=10),
+            showgrid=False, tickprefix="$",
+            tickfont=dict(color=C_BLUE, size=10,
+                          family="IBM Plex Mono, monospace"),
         ),
         yaxis3=dict(
             domain=[0.0, 0.18],
@@ -752,14 +784,11 @@ def build_option_history_chart(underlying_hist, option_hist, leg, ticker,
             tickfont=dict(size=9),
             title=dict(text="Vol", font=dict(size=10)),
         ),
-        template="plotly_white",
         height=520,
         hovermode='x unified',
-        hoverlabel=dict(bgcolor='rgba(15,23,42,0.95)', font=dict(size=12, color='white')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="center", x=0.5, font=dict(size=11)),
         margin=dict(l=60, r=70, t=60, b=40),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
     )
     return fig, n_real
 
@@ -827,17 +856,155 @@ def _is_itm_at_exp(leg, S_at_exp):
 
 st.markdown("""
 <style>
-h3 { margin-top: 1.6rem; margin-bottom: 0.5rem; padding-bottom: 0.25rem;
-     border-bottom: 1px solid rgba(128,128,128,0.18); }
-div[data-testid="stMetric"] label { font-size: 0.8rem; opacity: 0.85; }
-.leg-row { padding: 0.25rem 0; }
-.small-cap { font-size: 0.78rem; opacity: 0.7; text-transform: uppercase;
-             letter-spacing: 0.04em; }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+html, body, [class*="css"], .stApp, [data-testid="stSidebar"] {
+    font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+
+/* ---------- The signature: every number speaks mono ---------- */
+[data-testid="stMetricValue"], [data-testid="stMetricDelta"],
+.mono, code, .stNumberInput input, [data-testid="stDataFrame"] *,
+[data-testid="stTable"] * {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace !important;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Metric tiles → bordered terminal cards ---------- */
+div[data-testid="stMetric"] {
+    background: #171c26;
+    border: 1px solid #262d3d;
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem 0.6rem 0.9rem;
+}
+div[data-testid="stMetric"] label {
+    font-size: 0.68rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b93a7 !important;
+    font-weight: 600;
+}
+[data-testid="stMetricValue"] { font-size: 1.45rem !important; font-weight: 500; }
+[data-testid="stMetricDelta"] { font-size: 0.8rem !important; }
+
+/* ---------- Section headers: tick + uppercase eyebrow ---------- */
+.section-eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #8b93a7;
+    margin: 2.2rem 0 0.2rem 0;
+}
+.section-eyebrow::before { content: "▍"; color: #00c290; margin-right: 6px; }
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #e6e9ef;
+    margin: 0 0 0.8rem 0;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid #262d3d;
+}
+
+/* ---------- Column header labels in the leg editor ---------- */
+.small-cap {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem; color: #8b93a7;
+    text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+}
+
+/* ---------- Inputs / selects: flat terminal fields ---------- */
+.stNumberInput input, .stTextInput input,
+[data-baseweb="select"] > div {
+    background-color: #171c26 !important;
+    border-color: #262d3d !important;
+    border-radius: 5px !important;
+}
+.stNumberInput input:focus, .stTextInput input:focus {
+    border-color: #00c290 !important;
+    box-shadow: 0 0 0 1px #00c29044 !important;
+}
+
+/* ---------- Buttons ---------- */
+.stButton > button {
+    border-radius: 5px;
+    border: 1px solid #262d3d;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.stButton > button[kind="primary"] {
+    background: #00c290; border-color: #00c290; color: #0f1419;
+}
+.stButton > button[kind="primary"]:hover { background: #00dba2; border-color: #00dba2; }
+
+/* ---------- Tabs: underline style ---------- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px; border-bottom: 1px solid #262d3d;
+}
+.stTabs [data-baseweb="tab"] {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem; letter-spacing: 0.03em;
+    background: transparent; border-radius: 5px 5px 0 0;
+    padding: 6px 14px;
+}
+.stTabs [aria-selected="true"] {
+    background: #171c26;
+    border-bottom: 2px solid #00c290;
+}
+
+/* ---------- Expanders & dataframes: panel chrome ---------- */
+details[data-testid="stExpander"] {
+    background: #171c26;
+    border: 1px solid #262d3d !important;
+    border-radius: 6px;
+}
+[data-testid="stDataFrame"] {
+    border: 1px solid #262d3d; border-radius: 6px;
+}
+
+/* ---------- Sidebar polish ---------- */
+[data-testid="stSidebar"] {
+    border-right: 1px solid #262d3d;
+}
+[data-testid="stSidebar"] h2 {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #8b93a7; font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ---------- Strategy summary card ---------- */
+.strategy-card {
+    background: #171c26;
+    border: 1px solid #262d3d;
+    border-left: 3px solid #00c290;
+    border-radius: 6px;
+    padding: 0.8rem 1.1rem;
+    margin-bottom: 1rem;
+}
+.strategy-card .mono { font-size: 0.9rem; }
+
+/* Trim default top padding so the header sits like a terminal toolbar */
+.block-container { padding-top: 2.2rem; }
+hr { border-color: #262d3d !important; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Option Strategy Analyzer")
-st.caption("Multi-leg payoff diagram with adjustable DTE, probability overlay, and roll/assignment simulator.")
+
+def section(eyebrow, title):
+    """Terminal-style section header: mono eyebrow + bordered title."""
+    st.markdown(
+        f"<div class='section-eyebrow'>{eyebrow}</div>"
+        f"<div class='section-title'>{title}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+st.markdown(
+    "<h1 style='margin-bottom:0.1rem;'>Option Strategy Analyzer</h1>"
+    "<p style='color:#8b93a7; font-size:0.88rem; margin-top:0;'>"
+    "Multi-leg payoff · probability analysis · roll &amp; assignment simulation "
+    "· live chain data</p>",
+    unsafe_allow_html=True,
+)
 
 # --------------- SIDEBAR --------------------------------------------
 st.sidebar.header("Underlying")
@@ -886,7 +1053,7 @@ iv_from_mid = st.sidebar.checkbox(
 )
 
 # --------------- POSITION EDITOR ------------------------------------
-st.subheader("Options")
+section("Position", "Options")
 st.caption("💡 Edit fields directly, or use **Fetch from option chain** to pull live bid/ask mids and IV from yfinance.")
 
 # Default to the ASST diagonal call spread from the user's screenshot
@@ -1142,22 +1309,22 @@ for i, leg in enumerate(st.session_state.legs):
             mid, last = leg.get('_chain_mid', 0), leg.get('_chain_last', 0)
             vol, oi = leg.get('_chain_volume', 0), leg.get('_chain_oi', 0)
             if leg.get('_manual_edit'):
-                badge = (f"<span style='color:#a78bfa;font-size:0.7rem'>"
+                badge = (f"<span style='color:#b48cff;font-size:0.7rem'>"
                          f"✏️ manual (chain mid ${mid:.2f}, last ${last:.2f})</span>")
             else:
-                badge = (f"<span style='color:#10b981;font-size:0.7rem' "
+                badge = (f"<span style='color:#00c290;font-size:0.7rem' "
                          f"title='vol {vol} · OI {oi}'>📡 chain: "
                          f"bid ${bid:.2f} / ask ${ask:.2f} / mid ${mid:.2f} / last ${last:.2f}"
                          f"</span>")
         elif status == 'no_chain':
-            badge = "<span style='color:#f59e0b;font-size:0.7rem'>⚠️ no chain available</span>"
+            badge = "<span style='color:#f0b90b;font-size:0.7rem'>⚠️ no chain available</span>"
         elif status == 'no_strike':
             cs = leg.get('_closest_strike')
-            badge = (f"<span style='color:#f59e0b;font-size:0.7rem'>"
+            badge = (f"<span style='color:#f0b90b;font-size:0.7rem'>"
                      f"⚠️ not in chain (nearest ${cs:.2f})</span>" if cs
-                     else "<span style='color:#f59e0b;font-size:0.7rem'>⚠️ not in chain</span>")
+                     else "<span style='color:#f0b90b;font-size:0.7rem'>⚠️ not in chain</span>")
         elif status == 'no_price':
-            badge = "<span style='color:#f59e0b;font-size:0.7rem'>⚠️ no quote (bid/ask/last all 0)</span>"
+            badge = "<span style='color:#f0b90b;font-size:0.7rem'>⚠️ no quote (bid/ask/last all 0)</span>"
         else:
             badge = ""
         if badge:
@@ -1191,12 +1358,12 @@ for i, leg in enumerate(st.session_state.legs):
             iv_yf = leg.get('_chain_iv_yf', 0) or 0
             iv_comp = leg.get('_chain_iv_computed')
             if iv_from_mid and iv_comp is not None:
-                iv_badge = (f"<span style='color:#10b981;font-size:0.7rem' "
+                iv_badge = (f"<span style='color:#00c290;font-size:0.7rem' "
                             f"title='Inverted Black-Scholes against mid ${mid:.2f}. "
                             f"yfinance reported {iv_yf*100:.2f}%.'>"
                             f"📡 from mid (yf: {iv_yf*100:.1f}%)</span>")
             elif iv_yf > 0:
-                iv_badge = (f"<span style='color:#10b981;font-size:0.7rem'>"
+                iv_badge = (f"<span style='color:#00c290;font-size:0.7rem'>"
                             f"📡 yfinance IV</span>")
             else:
                 iv_badge = ""
@@ -1238,7 +1405,7 @@ if not option_legs:
     st.stop()
 
 min_dte = min(l['dte'] for l in option_legs)
-st.subheader("Analyze at date")
+section("Time machine", "Analyze at date")
 ac1, ac2 = st.columns([3, 1])
 analyze_days = ac1.slider(
     f"Days forward from today (0 = today, {min_dte} = earliest leg's expiration)",
@@ -1247,8 +1414,12 @@ analyze_days = ac1.slider(
          "curve is your P&L at this date; the dashed curve is always at expiration.",
 )
 analyze_date_str = (datetime.now().date() + timedelta(days=analyze_days)).strftime("%b %d, %Y")
-ac2.markdown(f"<div style='padding-top:1.4rem;'><b>Analyze date:</b><br>"
-             f"{analyze_date_str}</div>", unsafe_allow_html=True)
+ac2.markdown(
+    f"<div style='margin-top:1.2rem; background:#171c26; border:1px solid #262d3d; "
+    f"border-radius:6px; padding:0.55rem 0.9rem;'>"
+    f"<div class='small-cap'>Analyze date</div>"
+    f"<div class='mono' style='font-size:1.05rem;'>{analyze_date_str}</div>"
+    f"</div>", unsafe_allow_html=True)
 
 # --------------- COMPUTE METRICS ------------------------------------
 metrics = compute_metrics(
@@ -1263,7 +1434,7 @@ view_low = max(0.01, spot * (1 - vr))
 view_high = spot * (1 + vr)
 
 # --------------- CHART ----------------------------------------------
-st.subheader("Profit & Loss Chart")
+section("Payoff", "Profit &amp; Loss")
 fig = build_pnl_chart(
     metrics, spot, sigma_default, analyze_days,
     ticker, view_low, view_high,
@@ -1272,13 +1443,13 @@ fig = build_pnl_chart(
 st.plotly_chart(fig, use_container_width=True)
 
 # --------------- TRADE INFORMATION ----------------------------------
-st.subheader("Trade Information")
+section("Metrics", "Trade Information")
 
 # Position summary string
 def _format_leg_summary(leg, ticker):
     action_word = "BUY" if leg['action'] == 'buy' else "SELL"
     sign = "+" if leg['action'] == 'buy' else "-"
-    color = "#10b981" if leg['action'] == 'buy' else "#ef4444"
+    color = C_GREEN if leg['action'] == 'buy' else C_RED
     if leg['type'] == 'stock':
         body = f"{sign}{leg['qty']} {ticker} shares"
     else:
@@ -1296,13 +1467,12 @@ summary_parts = []
 for leg in st.session_state.legs:
     color, action_word, body = _format_leg_summary(leg, ticker)
     summary_parts.append(
-        f"<div style='color:{color};font-family:ui-monospace,SFMono-Regular,Consolas,monospace;'>"
+        f"<div class='mono' style='color:{color};'>"
         f"{action_word} {body} @${leg['entry_price']:.2f}</div>"
     )
 st.markdown(
-    "<div style='padding:0.6rem 1rem; border:1px solid rgba(128,128,128,0.2); "
-    "border-radius:8px; max-width:560px;'>"
-    "<div class='small-cap' style='margin-bottom:0.3rem;'>Custom strategy</div>"
+    "<div class='strategy-card'>"
+    "<div class='small-cap' style='margin-bottom:0.35rem;'>Custom strategy</div>"
     + "".join(summary_parts) +
     "</div>", unsafe_allow_html=True)
 
@@ -1382,8 +1552,7 @@ g4.metric("Vega (ν)", f"${metrics['vega']:+.2f}/1% IV")
 # OPTION PRICE HISTORY  (per-contract chart like OptionCharts)
 # ====================================================================
 
-st.markdown("---")
-st.subheader("📈 Option Price History")
+section("Time series", "Option Price History")
 st.caption(
     "How each contract's price has moved as the underlying moved. Green/red "
     "candles are **real trades** from yfinance's contract history; the dotted "
@@ -1447,8 +1616,7 @@ else:
 # WHAT-IF SIMULATOR  (price × DTE table, leg breakdown, assignment)
 # ====================================================================
 
-st.markdown("---")
-st.subheader("🎯 What-If Simulator — Scenarios, Assignment & Roll")
+section("Scenarios", "What-If Simulator — Assignment &amp; Roll")
 st.caption(
     "Pick any price and any day between now and expiration to see exactly what "
     "happens if you (a) close the position at theoretical prices, (b) hold to "
@@ -1792,9 +1960,9 @@ with st.expander("📋 Price × Date P&L Table (close-now values across scenario
         except ValueError:
             return ''
         if v > 0:
-            return 'background-color: rgba(16,185,129,0.15); color: #047857;'
+            return 'background-color: rgba(0,194,144,0.12); color: #00c290;'
         if v < 0:
-            return 'background-color: rgba(239,68,68,0.15); color: #b91c1c;'
+            return 'background-color: rgba(246,70,93,0.12); color: #f6465d;'
         return ''
     styled = df_grid.style.map(color_cell, subset=df_grid.columns[1:])
     st.dataframe(styled, use_container_width=True, hide_index=True)
@@ -1811,7 +1979,7 @@ st.caption(
     "[optionstrat.com](https://optionstrat.com)."
 )
 st.markdown(
-    "<div style='text-align:center; color:#94a3b8; font-size:0.8rem; padding:8px 0;'>"
+    "<div style='text-align:center; color:#8b93a7; font-size:0.8rem; padding:8px 0;'>"
     "Created by <b>Thuan</b> · in collaboration with "
     "<b>Claude</b> (Anthropic) · for educational purposes — not financial advice"
     "</div>",
