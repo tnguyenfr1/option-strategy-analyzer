@@ -870,12 +870,14 @@ html, body, [class*="css"], .stApp, [data-testid="stSidebar"] {
     font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Metric tiles → bordered terminal cards ---------- */
+/* ---------- Metric tiles → bordered terminal cards (responsive) ---------- */
 div[data-testid="stMetric"] {
     background: #171c26;
     border: 1px solid #262d3d;
     border-radius: 6px;
     padding: 0.7rem 0.9rem 0.6rem 0.9rem;
+    min-width: 0;                       /* allow card to shrink inside flex */
+    overflow: hidden;
 }
 div[data-testid="stMetric"] label {
     font-size: 0.68rem !important;
@@ -883,9 +885,35 @@ div[data-testid="stMetric"] label {
     letter-spacing: 0.08em;
     color: #8b93a7 !important;
     font-weight: 600;
+    white-space: normal !important;     /* let long labels wrap, not clip */
 }
-[data-testid="stMetricValue"] { font-size: 1.45rem !important; font-weight: 500; }
-[data-testid="stMetricDelta"] { font-size: 0.8rem !important; }
+[data-testid="stMetricValue"] {
+    /* Fluid size: shrinks smoothly as the window narrows */
+    font-size: clamp(0.95rem, 0.55rem + 0.9vw, 1.45rem) !important;
+    font-weight: 500;
+    white-space: normal !important;
+    overflow-wrap: break-word;
+    line-height: 1.25;
+}
+[data-testid="stMetricDelta"] {
+    font-size: clamp(0.65rem, 0.5rem + 0.3vw, 0.8rem) !important;
+    white-space: normal !important;
+}
+
+/* Let Streamlit columns shrink below their content width instead of clipping */
+div[data-testid="column"] { min-width: 0 !important; }
+div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+
+/* Narrow screens: tighter card padding, smaller eyebrows */
+@media (max-width: 1200px) {
+    div[data-testid="stMetric"] { padding: 0.5rem 0.6rem 0.45rem 0.6rem; }
+    div[data-testid="stMetric"] label { font-size: 0.6rem !important; letter-spacing: 0.05em; }
+}
+@media (max-width: 800px) {
+    [data-testid="stMetricValue"] { font-size: 1.05rem !important; }
+    .section-title { font-size: 1.05rem; }
+    .block-container { padding-left: 1rem; padding-right: 1rem; }
+}
 
 /* ---------- Section headers: tick + uppercase eyebrow ---------- */
 .section-eyebrow {
@@ -1180,7 +1208,7 @@ def _sync_leg_to_chain(leg, ticker, use_mid, leg_idx=None,
     leg['_manual_edit'] = False
 
 # Render leg editor (matches screenshot layout)
-hdr = st.columns([0.7, 0.9, 0.5, 2.3, 1.0, 0.6, 1.05, 0.9, 0.9, 0.3])
+hdr = st.columns([0.6, 0.85, 0.5, 2.0, 1.0, 0.85, 1.05, 0.85, 0.9, 0.3])
 for col, lbl in zip(hdr, ["", "Action", "Qty", "Expiration", "Strike", "Type",
                           "Entry $", "Δ (calc)", "IV %", ""]):
     col.markdown(f"<span class='small-cap'>{lbl}</span>", unsafe_allow_html=True)
@@ -1194,7 +1222,7 @@ exp_options.sort(key=lambda x: x[1])
 
 to_remove = None
 for i, leg in enumerate(st.session_state.legs):
-    cols = st.columns([0.7, 0.9, 0.5, 2.3, 1.0, 0.6, 1.05, 0.9, 0.9, 0.3])
+    cols = st.columns([0.6, 0.85, 0.5, 2.0, 1.0, 0.85, 1.05, 0.85, 0.9, 0.3])
     cols[0].markdown(f"**{ticker}**")
     leg['action'] = cols[1].selectbox(
         "", ['buy', 'sell'],
@@ -1479,42 +1507,64 @@ st.markdown(
 # Stock + Trade Details rows
 st.markdown("##### Stock")
 s1, s2 = st.columns(2)
-s1.metric(f"{ticker} Current Price", f"${spot:.2f}")
+s1.metric(f"{ticker} Current Price", f"${spot:.2f}",
+          help="Latest close from yfinance (editable in the sidebar).")
 # Use analyze-date breakevens for the headline (matches the solid curve on chart).
 # Fall back to at-expiration breakevens if the analyze-date curve has none.
 display_bes = metrics.get('breakevens_analyze') or metrics['breakevens']
 display_pnl = metrics['pnl_at_analyze'] if metrics.get('breakevens_analyze') else metrics['pnl_at_exp']
+_be_help = ("Price where the position's P&L crosses zero on the analyze date "
+            "(the solid curve). Crossing it puts the position in profit. "
+            "See Glossary below for the formula context.")
 if not display_bes:
-    s2.metric(f"{ticker} Breakeven Price", "—", "Not in viewable range")
+    s2.metric(f"{ticker} Breakeven Price", "—", "Not in viewable range",
+              help=_be_help)
 elif len(display_bes) == 1:
     be = display_bes[0]
     direction = "Above" if display_pnl[-1] > 0 else "Below"
     s2.metric(f"{ticker} Breakeven Price",
-              f"{direction} ${be:.2f}", f"{(be/spot-1)*100:+.2f}%")
+              f"{direction} ${be:.2f}", f"{(be/spot-1)*100:+.2f}%",
+              help=_be_help)
 else:
     be_lo, be_hi = display_bes[0], display_bes[-1]
     inside = display_pnl[0] < 0 and display_pnl[-1] < 0
     s2.metric(f"{ticker} Breakeven Range",
               f"${be_lo:.2f} – ${be_hi:.2f}",
-              f"profit {'inside' if inside else 'outside'} range")
+              f"profit {'inside' if inside else 'outside'} range",
+              help=_be_help)
 
 st.markdown("##### Trade Details")
 td1, td2, td3, td4 = st.columns(4)
 if metrics['cost'] >= 0:
-    td1.metric("Cost of Trade (debit)", f"${metrics['cost']:,.2f}")
+    td1.metric("Cost of Trade (debit)", f"${metrics['cost']:,.2f}",
+               help="Net premium paid to open: Σ (buy premiums − sell premiums) "
+                    "× 100 × qty. Positive = you pay (debit).")
 else:
-    td1.metric("Credit Received", f"${abs(metrics['cost']):,.2f}")
+    td1.metric("Credit Received", f"${abs(metrics['cost']):,.2f}",
+               help="Net premium collected at open: Σ (sell premiums − buy "
+                    "premiums) × 100 × qty. You keep this if all short legs "
+                    "expire worthless.")
 mp_str = f"${metrics['max_profit']:,.0f}" if metrics['max_profit'] < 1e6 else "Unlimited"
-td2.metric("Maximum Profit", mp_str, f"at ${metrics['max_profit_price']:.2f}")
+td2.metric("Maximum Profit", mp_str, f"at ${metrics['max_profit_price']:.2f}",
+           help="Highest P&L on the at-expiration curve across the modeled "
+                "price range. 'Unlimited' = keeps growing past the range edge.")
 ml_str = f"-${abs(metrics['max_loss']):,.0f}" if metrics['max_loss'] > -1e6 else "Unlimited"
 td3.metric("Maximum Loss", ml_str, f"at ${metrics['max_loss_price']:.2f}",
-           delta_color="inverse")
+           delta_color="inverse",
+           help="Lowest P&L on the at-expiration curve across the modeled "
+                "price range. For multi-expiration positions this includes the "
+                "cost of buying back legs that still have time value.")
 td4.metric("CVaR (5%)", f"${metrics['cvar']:,.0f}",
-           help="Average P&L in the worst 5% of outcomes at the earliest expiration.")
+           help="Conditional Value at Risk: the AVERAGE P&L across the worst "
+                "5% of price outcomes at the earliest expiration. A tail-risk "
+                "measure — harsher than max loss probability alone.")
 
 st.markdown("##### Probability Analysis (at earliest expiration)")
 p1, p2, p3 = st.columns(3)
-p1.metric("Probability of Profit", f"{metrics['pop']*100:.1f}%")
+p1.metric("Probability of Profit", f"{metrics['pop']*100:.1f}%",
+          help="P(P&L > 0 at the earliest expiration): the lognormal "
+               "probability mass over all price regions where the expiration "
+               "curve is positive. Model-based, not a guarantee.")
 p2.metric("Probability of Max Profit", f"{metrics['prob_max_profit']*100:.1f}%",
           help="Probability that price at the earliest expiration lands in the "
                "region where P&L is within 0.5% of the maximum profit. For "
@@ -1527,26 +1577,46 @@ p4, p5, p6 = st.columns(3)
 T_imp = metrics['min_dte'] / 365.0
 im_1sigma = implied_move(spot, sigma_default, T_imp)
 p4.metric("1σ implied move", f"±${im_1sigma:.2f}",
-          f"${spot-im_1sigma:.2f} – ${spot+im_1sigma:.2f}")
-p5.metric("Expected Value", f"${metrics['expected_value']:,.0f}")
+          f"${spot-im_1sigma:.2f} – ${spot+im_1sigma:.2f}",
+          help="One-standard-deviation price move by the earliest expiration: "
+               "S × σ × √T. The market 'expects' price to stay inside this "
+               "band ~68% of the time.")
+p5.metric("Expected Value", f"${metrics['expected_value']:,.0f}",
+          help="Probability-weighted average P&L: ∫ P&L(S) × f(S) dS over the "
+               "lognormal density f. Positive EV = profitable on average "
+               "under the model's assumptions.")
 p6.metric("Expected Return", f"{metrics['expected_return_pct']:.1f}%",
-          help="EV ÷ capital at risk.")
+          help="Expected Value ÷ Capital at Risk — EV per dollar you're "
+               "putting on the line.")
 
 st.markdown("##### Risk / Reward")
 rr1, rr2, rr3 = st.columns(3)
 rr_str = "∞" if metrics['reward_risk'] == float('inf') else f"{metrics['reward_risk']:.2f}"
-rr1.metric("Reward / Risk", rr_str)
-rr2.metric("Capital at Risk", f"${metrics['capital_at_risk']:,.0f}")
-rr3.metric("Cost basis %", 
+rr1.metric("Reward / Risk", rr_str,
+           help="Maximum profit ÷ |maximum loss|. Above 1 means you stand to "
+                "make more than you risk — but check the probabilities too.")
+rr2.metric("Capital at Risk", f"${metrics['capital_at_risk']:,.0f}",
+           help="The most you can lose: |max loss|. For credit trades this is "
+                "the margin you're effectively risking.")
+rr3.metric("Cost basis %",
            f"{metrics['cost']/max(abs(metrics['max_loss']),1)*100:+.1f}%",
-           help="Net debit (or credit) ÷ |max loss|.")
+           help="Net debit (or credit) ÷ |max loss|. Negative = you were paid "
+                "to take the position.")
 
 st.markdown("##### Position Greeks (at spot, now)")
 g1, g2, g3, g4 = st.columns(4)
-g1.metric("Delta (Δ)", f"{metrics['delta']:+.2f}")
-g2.metric("Gamma (Γ)", f"{metrics['gamma']:+.4f}")
-g3.metric("Theta (Θ)", f"${metrics['theta']:+.2f}/day")
-g4.metric("Vega (ν)", f"${metrics['vega']:+.2f}/1% IV")
+g1.metric("Delta (Δ)", f"{metrics['delta']:+.2f}",
+          help="Share-equivalent exposure: position P&L change per $1 move in "
+               "the underlying. −32.7 behaves like being short ~33 shares.")
+g2.metric("Gamma (Γ)", f"{metrics['gamma']:+.4f}",
+          help="Rate of change of delta per $1 underlying move. High |gamma| "
+               "= your direction exposure shifts fast as price moves.")
+g3.metric("Theta (Θ)", f"${metrics['theta']:+.2f}/day",
+          help="Time decay: P&L change per calendar day, all else equal. "
+               "Positive = you collect time value (typical for net sellers).")
+g4.metric("Vega (ν)", f"${metrics['vega']:+.2f}/1% IV",
+          help="Volatility exposure: P&L change if IV moves 1 percentage "
+               "point. Negative = an IV spike hurts the position.")
 
 # ====================================================================
 # OPTION PRICE HISTORY  (per-contract chart like OptionCharts)
@@ -1968,8 +2038,130 @@ with st.expander("📋 Price × Date P&L Table (close-now values across scenario
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
 # ====================================================================
-# FOOTER
+# GLOSSARY & FORMULAS
 # ====================================================================
+
+section("Reference", "Glossary &amp; Formulas")
+st.caption("Every metric on this page, defined. Hover the ❔ on any metric card for the short version.")
+
+gcol1, gcol2 = st.columns(2)
+
+with gcol1:
+    with st.expander("📐 Pricing model — Black-Scholes"):
+        st.markdown(
+            "All theoretical values use the **Black-Scholes** model. "
+            "A call is worth:"
+        )
+        st.latex(r"C = S\,N(d_1) - K e^{-rT} N(d_2)")
+        st.latex(r"d_1 = \frac{\ln(S/K) + (r + \tfrac{1}{2}\sigma^2)\,T}{\sigma\sqrt{T}},\qquad d_2 = d_1 - \sigma\sqrt{T}")
+        st.markdown(
+            "- **S** spot price · **K** strike · **T** years to expiration · "
+            "**r** risk-free rate · **σ** implied volatility · **N(·)** "
+            "standard normal CDF\n"
+            "- Puts follow from put-call parity: "
+            "$P = C - S + Ke^{-rT}$\n"
+            "- **Implied volatility (IV)** is the σ that makes the BS price "
+            "equal the market price — this app inverts the formula against "
+            "the bid/ask mid (Brent's method) when 'Compute IV from chain "
+            "mid' is on."
+        )
+
+    with st.expander("🎲 Probability model — lognormal"):
+        st.markdown(
+            "Probabilities assume the standard risk-neutral lognormal price "
+            "model (the same assumption inside Black-Scholes):"
+        )
+        st.latex(r"S_T = S_0 \exp\!\Big[\big(r - \tfrac{1}{2}\sigma^2\big)T + \sigma\sqrt{T}\,Z\Big],\quad Z\sim\mathcal{N}(0,1)")
+        st.markdown(
+            "- **Probability of Profit (PoP)** — total probability mass over "
+            "every price region where the at-expiration P&L is positive.\n"
+            "- **P(max profit) / P(max loss)** — probability mass over the "
+            "regions where P&L is within 0.5% of its extreme (the flat "
+            "plateau of a spread, or the tail beyond a long option's range).\n"
+            "- **1σ implied move** — $S_0\\,\\sigma\\sqrt{T}$: the one-standard-"
+            "deviation band; price stays inside it ≈68% of the time, inside "
+            "2σ ≈95%.\n"
+            "- ⚠️ These are *model* probabilities: they ignore fat tails, "
+            "IV changes, and earnings jumps."
+        )
+
+    with st.expander("💰 Trade economics"):
+        st.markdown(
+            "- **Cost of Trade / Credit Received** — net premium at open: "
+            "$\\sum (\\text{buys} - \\text{sells}) \\times 100 \\times qty$. "
+            "Debit = you pay; credit = you collect.\n"
+            "- **Maximum Profit / Loss** — the extremes of the at-expiration "
+            "P&L curve over the modeled price range. For positions whose "
+            "legs expire on different dates, the value of later-dated legs "
+            "at the earliest expiration is their Black-Scholes value "
+            "(remaining time value included).\n"
+            "- **Breakeven** — where the P&L curve crosses zero. The "
+            "headline number uses the analyze-date (solid) curve; the chart "
+            "marks it in amber.\n"
+            "- **Unlimited** — the curve keeps rising/falling at the edge of "
+            "the modeled range (e.g. long call upside, naked short call "
+            "risk)."
+        )
+
+with gcol2:
+    with st.expander("📊 Risk metrics"):
+        st.markdown(
+            "- **Expected Value (EV)** — probability-weighted average "
+            "P&L:"
+        )
+        st.latex(r"EV = \int P\&L(S)\, f(S)\, dS")
+        st.markdown(
+            "  where $f$ is the lognormal density at the earliest "
+            "expiration.\n"
+            "- **Expected Return** — EV ÷ Capital at Risk.\n"
+            "- **Reward / Risk** — max profit ÷ |max loss|.\n"
+            "- **Capital at Risk** — |max loss|; what you can actually "
+            "lose.\n"
+            "- **CVaR (5%)** — *Conditional Value at Risk*: the average "
+            "P&L across the worst 5% of modeled outcomes. Unlike max loss "
+            "(a single point), CVaR weights the whole bad tail.\n"
+            "- **Cost basis %** — net debit/credit ÷ |max loss|; negative "
+            "means you were paid to open."
+        )
+
+    with st.expander("🧮 The Greeks (position-level)"):
+        st.markdown(
+            "Sensitivities of the whole position, summed across legs "
+            "(× qty × 100, shorts negated):\n\n"
+            "- **Delta (Δ)** $= \\partial V/\\partial S$ — P&L per \\$1 "
+            "underlying move. Also the share-equivalent: Δ = −33 trades "
+            "like short 33 shares. Per-leg Δ (in the editor) is also the "
+            "rough probability the option expires ITM.\n"
+            "- **Gamma (Γ)** $= \\partial^2 V/\\partial S^2$ — how fast "
+            "delta changes; high near the strike close to expiration.\n"
+            "- **Theta (Θ)** $= \\partial V/\\partial t$ — P&L per "
+            "calendar day from time decay alone. Sellers want it "
+            "positive.\n"
+            "- **Vega (ν)** $= \\partial V/\\partial \\sigma$ — P&L per "
+            "1-percentage-point IV change. Short options = negative vega "
+            "= IV spikes hurt.\n\n"
+            "Greeks here are **calculated** via Black-Scholes from the "
+            "chain's IV (yfinance doesn't supply them)."
+        )
+
+    with st.expander("🔄 Rolls & assignment"):
+        st.markdown(
+            "- **Roll** — close an existing leg and open a replacement at "
+            "a different strike and/or expiration in one move. The Roll "
+            "Planner prices the close at Black-Scholes theoretical value "
+            "and the new leg at its live chain quote; **roll credit** = "
+            "premium received − cost to close.\n"
+            "- **Assignment** — a short option that finishes ITM is "
+            "assigned: short calls deliver stock at the strike (called "
+            "away), short puts receive stock at the strike. The What-If "
+            "simulator flags short legs that are ITM at the scenario "
+            "price.\n"
+            "- **DTE** — days to expiration. **OCC symbol** — the "
+            "exchange contract code (e.g. `MSTR270115C00200000`) used to "
+            "fetch per-contract history."
+        )
+
+
 st.markdown("---")
 st.caption(
     "Theoretical values from Black-Scholes; probabilities from a risk-neutral "
